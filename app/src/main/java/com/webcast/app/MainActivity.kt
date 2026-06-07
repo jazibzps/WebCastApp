@@ -31,6 +31,8 @@ class MainActivity : AppCompatActivity() {
 
     private var latestVideoUrl: String? = null
     private lateinit var detectorJs: String
+    private lateinit var adBlockJs: String
+    private lateinit var adBlocker: AdBlocker
 
     private val fabColorIdle    = Color.parseColor("#757575")  // grey  — no video yet
     private val fabColorReady   = Color.parseColor("#4CAF50")  // green — video found, tap to cast
@@ -48,8 +50,10 @@ class MainActivity : AppCompatActivity() {
         progressBar = findViewById(R.id.progressBar)
         castFab     = findViewById(R.id.castFab)
 
-        detectorJs   = assets.open("video_detector.js").bufferedReader().use { it.readText() }
-        castManager  = CastManager(this)
+        detectorJs  = assets.open("video_detector.js").bufferedReader().use { it.readText() }
+        adBlockJs   = assets.open("ad_block.js").bufferedReader().use { it.readText() }
+        adBlocker   = AdBlocker(this)
+        castManager = CastManager(this)
 
         setupWebView()
         setupUrlBar()
@@ -80,16 +84,21 @@ class MainActivity : AppCompatActivity() {
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = false
 
-            // Network-level sniffing: catches videos inside iframes too
+            // Network-level ad blocking + video sniffing (runs on background thread)
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                 val url = request.url.toString()
+
+                // Block ad/tracker requests before they load
+                if (adBlocker.shouldBlock(url)) return adBlocker.emptyResponse()
+
+                // Detect video URLs (including inside iframes)
                 if (url.contains(".m3u8", ignoreCase = true) ||
                     url.contains(".mpd",  ignoreCase = true) ||
                     (url.contains(".mp4", ignoreCase = true) && !url.contains("thumb"))
                 ) {
                     runOnUiThread { onVideoDetected(url) }
                 }
-                return null  // never block, just observe
+                return null
             }
         }
 
@@ -103,6 +112,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun injectDetector() {
+        webView.evaluateJavascript(adBlockJs, null)
         webView.evaluateJavascript(detectorJs, null)
     }
 
