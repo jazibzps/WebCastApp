@@ -1,0 +1,2 @@
+-keep class com.webcast.app.** { *; }
+-keep class com.google.android.gms.cast.** { *; }
